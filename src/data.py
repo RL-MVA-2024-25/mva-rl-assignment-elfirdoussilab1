@@ -2,6 +2,8 @@
 # by interacting with the environment
 import numpy as np
 from tqdm import tqdm
+from gymnasium.wrappers import TimeLimit
+from env_hiv import HIVPatient
 
 # Collecting data samples
 def create_dataset(env, horizon, disable_tqdm=False):
@@ -35,12 +37,20 @@ def create_dataset(env, horizon, disable_tqdm=False):
 def save_dataset(dataset, path = None):
     # path should be of the form: name.npz
     if path is not None:
-        np.savez_compressed(path, *dataset)
+        np.savez_compressed(path, S=dataset[0], A=dataset[1], R=dataset[2], S2=dataset[3], D=dataset[4])
     else:
         S = dataset[0]
         n = len(S)
-        np.savez_compressed(f'data_{n}.npz', *dataset)
+        np.savez_compressed(f'data_{n}.npz', S=dataset[0], A=dataset[1], R=dataset[2], S2=dataset[3], D=dataset[4])
 
 def load_dataset(path):
-    dataset = np.load('arrays.npz')
+    dataset = np.load(path)
     return dataset
+
+if __name__ == "__main__":
+    env = TimeLimit(
+        env=HIVPatient(domain_randomization=False), max_episode_steps=200
+    )
+    horizon = int(1e6)
+    dataset = create_dataset(env, horizon)
+    save_dataset(dataset, path = 'data_1M.npz')

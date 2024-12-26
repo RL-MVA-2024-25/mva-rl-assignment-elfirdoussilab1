@@ -1,5 +1,5 @@
 # In this file, we will implement the ML models used for our decision making
-import troch
+import torch
 import torch.nn as nn
 import nn.Functional as F
 
