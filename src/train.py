@@ -8,6 +8,9 @@ from data import *
 import joblib # To save and load Random Forest Regressor
 import random
 from sklearn.linear_model import LinearRegression
+from model import *
+import matplotlib.pyplot as plt
+import torch.nn as nn
 
 env = TimeLimit(
     env=HIVPatient(domain_randomization=False), max_episode_steps=200
@@ -16,105 +19,124 @@ env = TimeLimit(
 # You have to implement your own agent.
 # Don't modify the methods names and signatures, but you can add methods.
 # ENJOY!
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print("Using device : ", device)
+
 class ProjectAgent:
     def __init__(self):
         self.Q = None
+        self.gamma = config['gamma']
+        self.batch_size = config['batch_size']
+        self.nb_actions = config['nb_actions']
+        self.memory = ReplayBuffer(config['buffer_size'], device)
+        self.epsilon_max = config['epsilon_max']
+        self.epsilon_min = config['epsilon_min']
+        self.epsilon_stop = config['epsilon_decay_period']
+        self.epsilon_delay = config['epsilon_delay_decay']
+        self.epsilon_step = (self.epsilon_max-self.epsilon_min)/self.epsilon_stop
+        self.model = model 
+        self.criterion = torch.nn.MSELoss()
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config['learning_rate'])
 
     def act(self, observation, use_random=False):
         # We will use the Greedy action that maximizes the utility function
-        Qsa = []
-        # Looping over actions
-        for a in range(4):
-            sa = np.append(observation,a).reshape(1, -1)
-            Qsa.append(self.Q.predict(sa))
+        Q = model(torch.tensor(observation, dtype = torch.float).to(device))
         # Epsilon-greedy action
         r = random.random()
         if r < 0.1:
             k = np.random.choice(np.arange(0, 4))
             return k
-        return np.argmax(Qsa)
+        return np.argmax(Q.cpu().detach().numpy())
 
     def save(self, path):
         # Save the model
-        joblib.dump(self.Q, path)
+        torch.save(model.state_dict(), "model_dqn.pth")
 
-    def load(self, path = "models/random_forest_regressor_3.pkl"):
+    def load(self, path = "models/model_dqn.pth"):
         # Load the RF model
-        loaded_model = joblib.load(path)
-        self.Q = loaded_model
+        self.model = simple_relu_nn(config['hidden_neurones']).to(device)
+        self.model.load_state_dict(torch.load(path))
 
-
-def train(nb_iter, gamma = .9, model = "rf", data_dir = "data_1M.npz", N = int(1e5), id = 1):
-    # Adding an arg parser: Random Forest Or Neural Network
-    dataset = load_dataset(data_dir)
-    S, A, R, S2, D = (arr[:N] for arr in dataset.values())
-
-    if model == "rf":
-        Qfunctions = rf_fqi(S, A, R, S2, D, nb_iter, 4, gamma = gamma)
-        joblib.dump(Qfunctions[-1], f"models/random_forest_regressor_{id}.pkl")
-        print(f"Model saved at: random_forest_regressor_{id}.pkl")
-    elif model == "ln": # Linear regression
-        Qfunctions = rf_fqi(S, A, R, S2, D, nb_iter, 4, gamma = gamma)
-        joblib.dump(Qfunctions[-1], f"models/linear_regression_{id}.pkl")
-        print(f"Model saved at: linear_regression_{id}.pkl")
-    else:
-        print("Not implemented yet!")
-        return -1
+    def gradient_step(self):
+        if len(self.memory) > self.batch_size:
+            X, A, R, Y, D = self.memory.sample(self.batch_size)
+            QYmax = self.model(Y).max(1)[0].detach()
+            #update = torch.addcmul(R, self.gamma, 1-D, QYmax)
+            update = torch.addcmul(R, 1-D, QYmax, value=self.gamma) # does: R + gamma * (1 - D) * QYmax
+            QXA = self.model(X).gather(1, A.to(torch.long).unsqueeze(1))
+            loss = self.criterion(QXA, update.unsqueeze(1))
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step() 
     
-def rf_fqi(S, A, R, S2, D, iterations, nb_actions, gamma, disable_tqdm=False):
-    nb_samples = S.shape[0]
-    Qfunctions = []
-    SA = np.append(S,A,axis=1)
-    for iter in tqdm(range(iterations), disable=disable_tqdm):
-        if iter==0:
-            value=R.copy()
-        else:
-            Q2 = np.zeros((nb_samples,nb_actions))
-            for a2 in range(nb_actions):
-                A2 = a2*np.ones((S.shape[0],1))
-                S2A2 = np.append(S2,A2,axis=1)
-                Q2[:,a2] = Qfunctions[-1].predict(S2A2) # Using the previous q function to predict next one
-            max_Q2 = np.max(Q2,axis=1)
-            value = R + gamma*(1-D)*max_Q2
-        Q = RandomForestRegressor()
-        Q.fit(SA,value)
-        Qfunctions.append(Q)
-    return Qfunctions
+    def train(self, env, max_episode):
+        episode_return = []
+        episode = 0
+        episode_cum_reward = 0
+        state, _ = env.reset()
+        epsilon = self.epsilon_max
+        step = 0
 
-def ln_fqi(S, A, R, S2, D, iterations, nb_actions, gamma, disable_tqdm=False):
-    nb_samples = S.shape[0]
-    Qfunctions = []
-    SA = np.append(S,A,axis=1)
-    for iter in tqdm(range(iterations), disable=disable_tqdm):
-        if iter==0:
-            value=R.copy()
-        else:
-            Q2 = np.zeros((nb_samples,nb_actions))
-            for a2 in range(nb_actions):
-                A2 = a2*np.ones((S.shape[0],1))
-                S2A2 = np.append(S2,A2,axis=1)
-                Q2[:,a2] = Qfunctions[-1].predict(S2A2) # Using the previous q function to predict next one
-            max_Q2 = np.max(Q2,axis=1)
-            value = R + gamma*(1-D)*max_Q2
-        Q = LinearRegression()
-        Q.fit(SA,value)
-        Qfunctions.append(Q)
-    return Qfunctions
+        while episode < max_episode:
+            # update epsilon
+            if step > self.epsilon_delay:
+                epsilon = max(self.epsilon_min, epsilon-self.epsilon_step)
+
+            # select epsilon-greedy action
+            if np.random.rand() < epsilon:
+                #action = env.action_space.sample()
+                action = np.random.choice(np.arange(0, 4))
+            else:
+                action = self.act(state)
+
+            # step
+            next_state, reward, done, trunc, _ = env.step(action)
+            self.memory.append(state, action, reward, next_state, done)
+            episode_cum_reward += reward # We don't do gamma discounting, because we know that the number 
+                                        # of steps (horizon) is finite.
+
+            # train
+            self.gradient_step()
+
+            # next transition
+            step += 1
+            if done:
+                episode += 1
+                print("Episode ", '{:3d}'.format(episode), 
+                      ", epsilon ", '{:6.2f}'.format(epsilon), 
+                      ", batch size ", '{:5d}'.format(len(self.memory)),# should be named: memory length 
+                      ", episode return ", '{:4.1f}'.format(episode_cum_reward),
+                      sep='')
+                state, _ = env.reset()
+                episode_return.append(episode_cum_reward)
+                episode_cum_reward = 0
+            else:
+                state = next_state
+
+        return episode_return
+    
+# Config
+config = {'nb_actions': 4,
+          'hidden_neurones': 128,
+          'learning_rate': 0.001,
+          'gamma': 0.9,
+          'buffer_size': 1000000,
+          'epsilon_min': 0.01,
+          'epsilon_max': 1.,
+          'epsilon_decay_period': 1000,
+          'epsilon_delay_decay': 20,
+          'batch_size': 64}
 
 if __name__ == "__main__":
-    import argparse
+    # Model
+    model = torch.nn.Sequential(nn.Linear(6, config['hidden_neurones']),
+                          nn.ReLU(),
+                          nn.Linear(config['hidden_neurones'], 4)).to(device)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--data_dir", type=Path, required=True, help="Path to image directory"
-    )
-    parser.add_argument("--save_dir", type=Path, default= None)
-    #parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--model", type=str, default="rf")
-    parser.add_argument("--iterations", type=int, default=50)
-    parser.add_argument("--N", type=int, default=int(1e5))
-    parser.add_argument("--id", type=int, default=1)
-    args = parser.parse_args()
-
-    train(args.iterations, model = args.model, data_dir = args.data_dir, id = args.id)
+    # Train agent
+    agent = ProjectAgent()
+    scores = agent.train(env, 200)
+    fig, ax = plt.subplots()
+    ax.plot(scores)
+    fig.savefig("plot_dqn.pdf")
 
