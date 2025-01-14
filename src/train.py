@@ -1,5 +1,4 @@
 import numpy as np
-#from tqdm import tqdm
 from data import *
 import torch
 from model import *
