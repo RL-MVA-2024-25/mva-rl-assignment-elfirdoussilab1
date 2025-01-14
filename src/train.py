@@ -28,7 +28,6 @@ class ProjectAgent:
         #                 nn.ReLU(), 
         #                 nn.Linear(256, 4))
         
-        #self.target_model = deepcopy(self.model).to(device)
 
     def act(self, observation, eps = 0, use_random=False): # epsilon-greedy action
         # # Epsilon-greedy action
