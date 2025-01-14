@@ -42,6 +42,6 @@ class ProjectAgent:
         # Save the model
         torch.save(self.model.state_dict(), path)
 
-    def load(self, path = "models/model_dqn_best.pth"):
+    def load(self, path = "model_dqn_best.pth"):
         # Load the RF model
         self.model.load_state_dict(torch.load(path, map_location=torch.device('cpu'), weights_only = True))
