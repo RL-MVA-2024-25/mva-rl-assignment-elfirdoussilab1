@@ -8,7 +8,7 @@ import torch.nn as nn
 from data import *
 from utils import greedy_action
 from copy import deepcopy
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 #from fast_env import FastHIVPatient
 from evaluate import evaluate_HIV
 
@@ -183,25 +183,18 @@ class ProjectAgent:
         return episode_return
 
 if __name__ == "__main__":
-    # Initialize the environment: use FastHIVPatient for a faster environment
-    env = TimeLimit(
-        env=HIVPatient(domain_randomization=True), 
-        #env = FastHIVPatient(domain_randomization=True),
-        max_episode_steps=200
-    )  # The time wrapper limits the number of steps in an episode at 200.
-
     # Total number of episodes
     n_epsides = 10000
 
     # Agent
     agent = ProjectAgent()
     print("Training...")
-    scores = agent.train(env, n_epsides)
+    scores = agent.train(n_epsides)
 
     print("Finished training.")
-
-    fig, ax = plt.subplots()
-    ax.plot(scores)
-    path = "train_plot.pdf"
-    fig.savefig(path)
-    print("Plot saved")
+    # Plotting results
+    # fig, ax = plt.subplots()
+    # ax.plot(scores)
+    # path = "train_plot.pdf"
+    # fig.savefig(path)
+    # print("Plot saved")

@@ -1,5 +1,5 @@
 # In this file, we will implement the function to generate our dataset of states, actions and rewards
-# by interacting with the environment
+# by interacting with the environment, as well as the ReplayBuffer for training DQNs
 import numpy as np
 import random
 import torch
