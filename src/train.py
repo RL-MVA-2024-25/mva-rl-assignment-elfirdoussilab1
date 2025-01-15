@@ -101,9 +101,9 @@ class ProjectAgent:
         torch.save(self.model.state_dict(), path)
         torch.save(self.target_model.state_dict(), path_target)
 
-    def load(self, path = "model_ddqn_best_1.pth"): # Best Model gotten so far
-        # Load the RF model
-        self.model.load_state_dict(torch.load(path, map_location=torch.device('cpu'), weights_only = True), strict= False)
+    def load(self, path = "model_dqn_best_1.pth"): # Best Model gotten so far
+        # Load the DQN model
+        self.model.load_state_dict(torch.load(path, map_location=torch.device('cpu'), weights_only = True))
     
     def train(self, max_episode):
         # Environment
