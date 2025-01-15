@@ -44,7 +44,7 @@ class ProjectAgent:
         self.Q = loaded_model
 
 
-def train(nb_iter, gamma = .9, model = "rf", data_dir = "data_1M.npz", N = int(1e5), id = 1):
+def train(nb_iter, gamma = .9, model = "rf", data_dir = "data.npz", N = int(1e4), id = 1):
     # Adding an arg parser: Random Forest Or Neural Network
     dataset = load_dataset(data_dir)
     S, A, R, S2, D = (arr[:N] for arr in dataset.values())

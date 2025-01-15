@@ -2,7 +2,6 @@ from gymnasium.wrappers import TimeLimit
 from env_hiv import HIVPatient
 import numpy as np
 from data import *
-import random
 import torch
 import torch.nn as nn
 from data import *
@@ -25,7 +24,7 @@ config = {'nb_actions': 4,
             'epsilon_max': 1.,
             'epsilon_decay_period': 10000,
             'epsilon_delay_decay': 100,
-            'batch_size': 1024,
+            'batch_size': 512,
             'gradient_steps': 5,
             'update_target_strategy': 'replace', # or 'ema'
             'update_target_freq': 50,
@@ -102,7 +101,7 @@ class ProjectAgent:
         torch.save(self.model.state_dict(), path)
         torch.save(self.target_model.state_dict(), path_target)
 
-    def load(self, path = "model_dqn_best.pth"):
+    def load(self, path = "model_ddqn_best_1.pth"): # Best Model gotten so far
         # Load the RF model
         self.model.load_state_dict(torch.load(path, map_location=torch.device('cpu'), weights_only = True), strict= False)
     
@@ -184,7 +183,7 @@ class ProjectAgent:
 
 if __name__ == "__main__":
     # Total number of episodes
-    n_epsides = 10000
+    n_epsides = 2000
 
     # Agent
     agent = ProjectAgent()
