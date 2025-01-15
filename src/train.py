@@ -5,11 +5,10 @@ from data import *
 import torch
 import torch.nn as nn
 from data import *
-from utils import greedy_action
 from copy import deepcopy
 #import matplotlib.pyplot as plt
 #from fast_env import FastHIVPatient
-from evaluate import evaluate_HIV
+from evaluate import evaluate_agent
 
 # Device
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -75,9 +74,16 @@ class ProjectAgent:
         self.update_target_tau = config['update_target_tau'] if 'update_target_tau' in config.keys() else 0.005
         self.train_strategy = config['strategy']
 
-    def act(self, observation, use_random=False):
-        # Greedy action
-        return greedy_action(self.model, observation)
+    def act(self, observation, eps = 0., use_random=False):
+        # Epsilon-greedy action
+        r = random.random()
+        if r < eps:
+            k = np.random.choice(np.arange(0, 4))
+        else: # Greedy action
+            with torch.no_grad():
+                Q = self.model(torch.Tensor(observation).unsqueeze(0).to(device))
+                k = torch.argmax(Q).item()
+        return k
 
     def gradient_step(self):
         if len(self.memory) > self.batch_size:
@@ -113,9 +119,19 @@ class ProjectAgent:
                 #env = FastHIVPatient(domain_randomization=True),
                 max_episode_steps=200
             )
+            eval_env = TimeLimit(
+                env=HIVPatient(domain_randomization=False), 
+                #env = FastHIVPatient(domain_randomization=False),
+                max_episode_steps=200
+            )
         else: # fixed!
             env = TimeLimit(
                 env=HIVPatient(domain_randomization=False), 
+                #env = FastHIVPatient(domain_randomization=False),
+                max_episode_steps=200
+            )
+            eval_env = TimeLimit(
+                env=HIVPatient(domain_randomization=True), 
                 #env = FastHIVPatient(domain_randomization=True),
                 max_episode_steps=200
             )
@@ -132,18 +148,19 @@ class ProjectAgent:
             # update epsilon
             if step > self.epsilon_delay:
                 epsilon = max(self.epsilon_min, epsilon-self.epsilon_step)
+
             # select epsilon-greedy action
-            if np.random.rand() < epsilon:
-                action = env.action_space.sample()
-            else:
-                action = greedy_action(self.model, state)
-            # step
+            action = self.act(state, eps = epsilon)
+
+            # step: interacting with the env and collecting reward
             next_state, reward, done, trunc, _ = env.step(action)
             self.memory.append(state, action, reward, next_state, done)
             episode_cum_reward += reward
-            # train
+
+            # train the model
             for _ in range(self.nb_gradient_steps): 
                 self.gradient_step()
+
             # update target network
             if self.update_target_strategy == 'replace':
                 if step % self.update_target_freq == 0: 
@@ -155,12 +172,15 @@ class ProjectAgent:
                 for key in model_state_dict:
                     target_state_dict[key] = tau*model_state_dict[key] + (1-tau)*target_state_dict[key]
                 self.target_model.load_state_dict(target_state_dict)
+
             # next transition
             step += 1
             if done or trunc:
                 episode += 1
-                # Evaluate the current model on the environment for an episode
-                eval = evaluate_HIV(agent=self, nb_episode=1)
+
+                # Evaluate the current model on the eval environment for an episode
+                eval = evaluate_agent(agent=self, env = eval_env, nb_episode=1)
+
                 # If the evaluation score improved, save this checkpoint
                 if best_eval < eval :
                     best_eval = eval
@@ -183,7 +203,7 @@ class ProjectAgent:
 
 if __name__ == "__main__":
     # Total number of episodes
-    n_epsides = 2000
+    n_epsides = 5000
 
     # Agent
     agent = ProjectAgent()
